@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>4-Arm Rubik's Cube Robot Simulator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-badge">4A</div>
+      <div>
+        <h1>4-Arm Rubik's Cube Robot Simulator</h1>
+        <p>Webcam Vision (Color_recog-v2) + Arduino CFOP Solver + 8-Servo Multi-Step Kinematics</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="btnScramble" class="multi">🎲 Random Scramble</button>
+      <button id="btnResetSolved">↺ Solved Cube</button>
+      <button id="btnSolve" class="primary">▶ Solve &amp; Simulate</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- LEFT PANEL: WEBCAM SCANNER & FACE EDITOR -->
+    <section class="panel">
+      <div class="panel-header">
+        <h2>1. Webcam Face Scanner</h2>
+        <span id="scanProgress" style="font-size:11px; color:var(--accent);">0 / 6 scanned</span>
+      </div>
+      <div class="panel-body">
+        <div class="webcam-wrap">
+          <video id="webcamVideo" autoplay playsinline muted></video>
+          <canvas id="detectOverlay" class="detect-overlay"></canvas>
+          <div class="detect-pill" id="detectPill">Camera Off</div>
+        </div>
+        <canvas id="captureCanvas" style="display:none;"></canvas>
+
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button id="btnStartCam" class="primary" style="flex:1;">📷 Start Webcam</button>
+          <button id="btnCapture" class="success" style="flex:1;" disabled>📸 Capture Detected</button>
+          <label
+            style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); width:100%;">
+            <input type="checkbox" id="chkAutoCapture" checked />
+            Auto-capture face when detection stabilizes (3 steady frames)
+          </label>
+          <label style="font-size:11px; color:var(--muted); width:100%;">
+            Or upload a cube photo (auto-detected):
+            <input type="file" id="fileUpload" accept="image/*" style="font-size:11px; margin-top:4px; width:100%;" />
+          </label>
+        </div>
+
+        <div class="crop-preview-row" id="cropPreviewRow" style="display:none;">
+          <img id="detectedPreview" alt="Detected face crop" />
+          <div style="font-size:11px; color:var(--muted); line-height:1.4;">
+            <strong style="color:var(--text);">Auto-Detected &amp; Deskewed Face</strong>
+            <div id="detectMethodLabel">—</div>
+          </div>
+        </div>
+
+        <div class="scan-step-card" id="scanStepCard">
+          <div><span class="face-pill" id="scanFacePill">RIGHT</span><strong id="scanStepTitle">Step 1 of 6</strong>
+          </div>
+          <div id="scanInstruction" style="margin-top:4px; color:var(--text);">
+            Align the cube face inside the 3×3 grid and click Capture Face.
+          </div>
+          <div class="robot-note" id="scanRobotAction"></div>
+        </div>
+
+        <div class="face-tabs" id="faceTabs">
+          <button class="face-tab active" data-face="RIGHT">R</button>
+          <button class="face-tab" data-face="LEFT">L</button>
+          <button class="face-tab" data-face="UP">U</button>
+          <button class="face-tab" data-face="DOWN">D</button>
+          <button class="face-tab" data-face="FRONT">F</button>
+          <button class="face-tab" data-face="BACK">B</button>
+        </div>
+
+        <div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:6px;">
+            Detected 3×3 Face (click a color, then click any sticker to edit):
+          </div>
+          <div class="sticker-editor">
+            <div class="face-grid" id="faceGrid"></div>
+            <div class="palette" id="colorPalette">
+              <button class="swatch c-R selected" data-color="R">R</button>
+              <button class="swatch c-O" data-color="O">O</button>
+              <button class="swatch c-Y" data-color="Y">Y</button>
+              <button class="swatch c-G" data-color="G">G</button>
+              <button class="swatch c-B" data-color="B">B</button>
+              <button class="swatch c-W" data-color="W">W</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:5px;">2D Unfolded Cube State:</div>
+          <div class="net-preview" id="netPreview"></div>
+        </div>
+
+        <div class="status-banner" id="statusBanner">
+          Ready. Scan all 6 faces with your webcam or click <strong>Random Scramble</strong>, then press <strong>Solve
+            &amp; Simulate</strong>.
+        </div>
+      </div>
+    </section>
+
+    <!-- CENTER PANEL: DUAL ISOMETRIC 3D ROBOT & CUBE SIMULATOR -->
+    <section class="panel">
+      <div class="panel-header">
+        <h2>2. Dual Isometric 3D 4-Arm Robot Simulation</h2>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11px; color:var(--muted);">Drag either view to orbit · Scroll to zoom</span>
+          <button id="btnResetViews" style="padding:3px 8px; font-size:11px;">↺ Reset Iso</button>
+        </div>
+      </div>
+
+      <div class="hud-strip">
+        <div class="hud-card" style="flex:1;">
+          <div style="font-size:10px; color:var(--muted);" id="hudStage">IDLE</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="hud-move" id="hudMove">—</span>
+            <span id="hudBadge"></span>
+          </div>
+          <div style="margin-top:2px; color:var(--text); font-size:11px;" id="hudDesc">
+            No active solve plan yet.
+          </div>
+        </div>
+        <div class="hud-card" style="text-align:right; min-width:140px;">
+          <div style="font-size:10px; color:var(--muted);">PROGRESS</div>
+          <div style="font-size:16px; font-weight:700;" id="hudProgress">0 / 0</div>
+          <div style="font-size:11px; color:var(--accent);" id="hudPhase">Servos at Home</div>
+        </div>
+      </div>
+
+      <div class="dual-stage">
+        <div class="viewport-win">
+          <div class="viewport-label">ISO VIEW A · FRONT / UP / RIGHT</div>
+          <canvas id="simCanvasA" class="sim-canvas"></canvas>
+        </div>
+        <div class="viewport-win">
+          <div class="viewport-label">ISO VIEW B · BACK / DOWN / LEFT</div>
+          <canvas id="simCanvasB" class="sim-canvas"></canvas>
+        </div>
+      </div>
+
+      <div class="playback-bar">
+        <div class="playback-controls">
+          <button id="btnRestart" disabled>⏮ Reset</button>
+          <button id="btnPrev" disabled>◀ Prev</button>
+          <button id="btnPlay" class="primary" disabled>▶ Play</button>
+          <button id="btnNext" disabled>Next ▶</button>
+          <button id="btnSubStep" disabled>Step Sub-Action ⏭</button>
+        </div>
+        <div class="speed-wrap">
+          <span>Speed:</span>
+          <input type="range" id="speedSlider" min="0.5" max="8" step="0.5" value="2" />
+          <strong id="speedLabel">2.0x</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: TELEMETRY, MULTI-STEP BREAKDOWN & TIMELINE -->
+    <section class="panel">
+      <div class="panel-header">
+        <h2>3. Robot Plan &amp; 8-Servo Telemetry</h2>
+      </div>
+      <div class="panel-body">
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="val" id="statLogical">—</div>
+            <div class="lbl">Logical Moves</div>
+          </div>
+          <div class="stat-box">
+            <div class="val" id="statPhysical">—</div>
+            <div class="lbl">Physical Arm Ops</div>
+          </div>
+          <div class="stat-box">
+            <div class="val" id="statMulti" style="color:#c084fc;">—</div>
+            <div class="lbl">Multi-Step (F/B/Z)</div>
+          </div>
+          <div class="stat-box">
+            <div class="val" id="statTime" style="color:var(--success);">—</div>
+            <div class="lbl">Est. Real Robot Time</div>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:6px;">
+            Active Move → Physical Arm Breakdown:
+          </div>
+          <div class="macro-list" id="macroList">
+            <div class="macro-chip"><span>Waiting for solve plan...</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:6px;">
+            Live 8-Servo Angles (<code>servo_and_motor_rotations.ino</code>):
+          </div>
+          <div class="servo-grid" id="servoGrid"></div>
+        </div>
+
+        <div style="flex:1; display:flex; flex-direction:column; min-height:0;">
+          <div
+            style="font-size:11px; color:var(--muted); margin-bottom:6px; display:flex; justify-content:space-between;">
+            <span>Move Timeline (click to jump):</span>
+            <span style="color:#c084fc;">Purple = 3-step</span>
+          </div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+
+</html>
